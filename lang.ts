@@ -1,32 +1,55 @@
-enum DigDirection {
-  Up = 'Up',
-  Down = 'Down',
-  Forward = '',
-}
-
-enum MoveDirection {
+enum Move {
   Forward = 'Forward',
   Back = 'Back',
   Up = 'Up',
   Down = 'Down',
 }
 
-enum TurnDirection {
-  Left,
-  Right,
+enum Turn {
+  Left = 'Left',
+  Right = 'Right',
 }
 
+// TS Helpers
 const str = (...args: string[]) => args.join('');
+const map = <T>(fn: (i: number) => T, len: number) =>
+  Array.from({ length: len }).map((_, i) => fn(i));
 
-const dig = (direction = DigDirection.Forward) => `turtle.dig${direction}()\n`;
-const turn = (direction: TurnDirection) => `turtle.turn${direction}()\n`;
-const move = (direction = MoveDirection.Forward) => `turtle.move${direction}()\n`;
+// Lua Primitives
+const dig = (direction = Move.Forward) => {
+  if (direction === Move.Back) {
+    throw new Error('Turtles cannot dig back');
+  }
 
-const line = (args: { dig?: boolean, len: number }) =>
-  Array(args.len).fill(0).map(_ => args?.dig ? str(dig(), move()) : move()).join('');
-  
-// turtle moves 
-const rect = (args: { dig?: boolean, depth: number, width: number }) =>
-  
+  return `turtle.dig${direction}()\n`;
+};
+const turn = (direction: Turn) => `turtle.turn${direction}()\n`;
+const move = (direction = Move.Forward) =>
+  `turtle.${direction.toLowerCase()}()\n`;
+const loop = (args: { len: number; code: string }) =>
+  `for i = 1,${args.len} do
+${args.code.trim()}
+end\n`;
 
-Deno.writeTextFileSync('mineout.lua', line({ dig: false, len: 50 }));
+// Code Generators
+const line = (args: { dig?: boolean; len: number }) =>
+  loop({ len: args.len, code: args.dig ? str(dig(), move()) : move() });
+
+const rect = (args: {
+  dig?: boolean;
+  depth: number;
+  width: number;
+  height?: number;
+}) => {
+  args.height = 1;
+  return map((width) => {
+    const doTurn = turn(width % 2 === 0 ? Turn.Right : Turn.Left);
+    const isLast = width === args.width - 1;
+    return str(
+      line({ ...args, len: args.depth - 1 }),
+      isLast ? '' : str(doTurn, dig(), move(), doTurn)
+    );
+  }, args.width).join('');
+};
+
+Deno.writeTextFileSync('mineout.lua', rect({ depth: 3, width: 3, dig: true }));

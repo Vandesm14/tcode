@@ -19,6 +19,8 @@ const map = <T>(fn: (i: number) => T, len: number) =>
 const dig = (direction = Move.Forward) => {
   if (direction === Move.Back) {
     throw new Error('Turtles cannot dig back');
+  } else if (direction === Move.Forward) {
+    return 'turtle.dig()\n';
   }
 
   return `turtle.dig${direction}()\n`;
@@ -26,10 +28,23 @@ const dig = (direction = Move.Forward) => {
 const turn = (direction: Turn) => `turtle.turn${direction}()\n`;
 const move = (direction = Move.Forward) =>
   `turtle.${direction.toLowerCase()}()\n`;
-const loop = (args: { len: number; code: string }) =>
-  `for i = 1,${args.len} do
+const loop = (args: { len: number; code: string; v?: string }) =>
+  `for ${args.v ?? 'i'} = 1,${args.len} do
 ${args.code.trim()}
 end\n`;
+
+const luaIf = (args: { cmp: string; yes: string; no: string }) => {
+  let ret = `if ${args.cmp} then
+${args.yes.trim()}\n`;
+
+  if (args.no) {
+    ret += `else
+${args.no.trim()}\n`;
+  }
+
+  ret += 'end';
+  return ret;
+};
 
 // Code Generators
 const line = (args: { dig?: boolean; len: number }) =>
@@ -42,14 +57,23 @@ const rect = (args: {
   height?: number;
 }) => {
   args.height = 1;
-  return map((width) => {
-    const doTurn = turn(width % 2 === 0 ? Turn.Right : Turn.Left);
-    const isLast = width === args.width - 1;
-    return str(
-      line({ ...args, len: args.depth - 1 }),
-      isLast ? '' : str(doTurn, dig(), move(), doTurn)
-    );
-  }, args.width).join('');
+  return str(
+    loop({
+      v: 'j',
+      len: args.width - 1,
+      code: str(
+        line({ ...args, len: args.depth - 1 }),
+        luaIf({
+          cmp: `j % 2 == 0`,
+          yes: str(turn(Turn.Left), dig(), move(), turn(Turn.Left)),
+          no: str(turn(Turn.Right), dig(), move(), turn(Turn.Right)),
+        })
+      ),
+    }),
+    line({ ...args, len: args.depth - 1 }),
+    turn(Turn.Right),
+    turn(Turn.Right)
+  );
 };
 
 Deno.writeTextFileSync('mineout.lua', rect({ depth: 3, width: 3, dig: true }));

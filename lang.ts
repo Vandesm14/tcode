@@ -15,6 +15,11 @@ const str = (...args: string[]) => args.join('');
 const map = <T>(fn: (i: number) => T, len: number) =>
   Array.from({ length: len }).map((_, i) => fn(i));
 
+const repeat = (args: { code: string; len: number }) =>
+  map(() => args.code, args.len)
+    .join('')
+    .trim();
+
 // Lua Primitives
 const dig = (direction = Direction.Forward) => {
   if (direction === Direction.Back) {
@@ -56,7 +61,12 @@ const line = (args: { dig?: boolean; len: number; v?: string }) =>
     code: args.dig ? str(dig(), move()) : move(),
   });
 
-const rect = (args: { dig?: boolean; depth: number; width: number }) =>
+const rect = (args: {
+  dig?: boolean;
+  depth: number;
+  width: number;
+  invert?: boolean;
+}) =>
   str(
     comment('loop through rows'),
     loop({
@@ -69,7 +79,7 @@ const rect = (args: { dig?: boolean; depth: number; width: number }) =>
           'turn to the next row, dig forward, then move to the line and turn into it'
         ),
         luaIf({
-          cmp: `w % 2 == 1`,
+          cmp: `${args.invert ? 'not ' : ''}(w % 2 == 1)`,
           yes: str(turn(Turn.Right), dig(), move(), turn(Turn.Right)),
           no: str(turn(Turn.Left), dig(), move(), turn(Turn.Left)),
         })
@@ -85,24 +95,50 @@ const box = (args: {
   width: number;
   height: number;
 }) =>
-  loop({
-    len: args.height,
-    v: 'h',
-    code: str(
-      comment('dig rect'),
-      rect({ dig: args.dig, depth: args.depth, width: args.width }),
-      comment('dig down and move down if not at end'),
-      luaIf({
-        cmp: `h ~= ${args.height}`,
-        yes: str(dig(Direction.Down), move(Direction.Down)),
-      }),
-      comment('turn left if on even level and right if on odd'),
-      turn(Turn.Right),
-      turn(Turn.Right)
-    ),
-  });
+  // if width is even, invert based on height (height is even ? !invert : invert)
+  // if width is odd, no need to invert
+  str(
+    args.width % 2 === 0
+      ? map(
+          (i) =>
+            str(
+              comment('dig rect'),
+              rect({
+                dig: args.dig,
+                depth: args.depth,
+                width: args.width,
+                invert: i % 2 === 1,
+              }),
+              comment('dig down and move down if not at end'),
+              luaIf({
+                cmp: `h ~= ${args.height}`,
+                yes: str(dig(Direction.Down), move(Direction.Down)),
+              }),
+              comment('turn left if on even level and right if on odd'),
+              turn(Turn.Right),
+              turn(Turn.Right)
+            ),
+          args.height
+        ).join('')
+      : loop({
+          len: args.height,
+          v: 'h',
+          code: str(
+            comment('dig rect'),
+            rect({ dig: args.dig, depth: args.depth, width: args.width }),
+            comment('dig down and move down if not at end'),
+            luaIf({
+              cmp: `h ~= ${args.height}`,
+              yes: str(dig(Direction.Down), move(Direction.Down)),
+            }),
+            comment('turn left if on even level and right if on odd'),
+            turn(Turn.Right),
+            turn(Turn.Right)
+          ),
+        })
+  );
 
-Deno.writeTextFileSync(
-  'mineout.lua',
-  box({ depth: 3, width: 3, height: 3, dig: true })
-);
+const code = str(box({ depth: 8, width: 1, height: 6, dig: true })).trim();
+
+console.log(`Generated ${code.split('\n').length} loc`);
+Deno.writeTextFileSync('mineout.lua', code);

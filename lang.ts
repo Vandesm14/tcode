@@ -94,33 +94,60 @@ const box = (args: {
   depth: number;
   width: number;
   height: number;
-}) =>
-  // if width is even, invert based on height (height is even ? !invert : invert)
-  // if width is odd, no need to invert
-  str(
+}) => {
+  const appendDig = str(
+    comment('dig down and move down if not at end'),
+    luaIf({
+      cmp: `h ~= ${args.height}`,
+      yes: str(dig(Direction.Down), move(Direction.Down)),
+    }),
+    comment('turn left if on even level and right if on odd'),
+    turn(Turn.Right),
+    turn(Turn.Right)
+  );
+
+  const digTwoLevels = str(
+    comment('dig rect'),
+    rect({
+      dig: args.dig,
+      depth: args.depth,
+      width: args.width,
+    }),
+    appendDig,
+    // -------------------------------------
+    comment('dig rect inverted'),
+    rect({
+      dig: args.dig,
+      depth: args.depth,
+      width: args.width,
+      invert: true,
+    }),
+    appendDig
+  );
+
+  return str(
     args.width % 2 === 0
-      ? map(
-          (i) =>
-            str(
-              comment('dig rect'),
-              rect({
-                dig: args.dig,
-                depth: args.depth,
-                width: args.width,
-                invert: i % 2 === 1,
-              }),
-              comment('dig down and move down if not at end'),
-              luaIf({
-                cmp: `h ~= ${args.height}`,
-                yes: str(dig(Direction.Down), move(Direction.Down)),
-              }),
-              comment('turn left if on even level and right if on odd'),
-              turn(Turn.Right),
-              turn(Turn.Right)
-            ),
-          args.height
-        ).join('')
-      : loop({
+      ? // Is even (difficult)
+        str(
+          loop({
+            len: Math.floor(args.height / 2),
+            v: 'h',
+            code: digTwoLevels,
+          }),
+          comment('dig final row(s)'),
+          args.height % 2 === 0
+            ? loop({ len: 2, code: digTwoLevels })
+            : str(
+                rect({
+                  dig: args.dig,
+                  depth: args.depth,
+                  width: args.width,
+                }),
+                appendDig
+              )
+        )
+      : // Is odd (easy)
+        loop({
           len: args.height,
           v: 'h',
           code: str(
@@ -137,8 +164,15 @@ const box = (args: {
           ),
         })
   );
+};
 
-const code = str(box({ depth: 8, width: 1, height: 6, dig: true })).trim();
+const code = str(box({ dig: true, depth: 6, width: 1, height: 3 })).trim();
 
 console.log(`Generated ${code.split('\n').length} loc`);
 Deno.writeTextFileSync('mineout.lua', code);
+
+const conn = Deno.listen({ port: 3000 });
+console.log(`Serving on http://localhost:3000`);
+console.log('Get the program using `wget run http://mr.thedevbird.com:3000`');
+const s = Deno.serveHttp(await conn.accept());
+for await (const req of s) await req.respondWith(new Response(code));

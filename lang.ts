@@ -37,6 +37,15 @@ const loop = (args: { len: number; code: string; v?: string }) =>
   `for ${args.v ?? 'i'} = 1,${args.len} do
 ${args.code.trim()}
 end\n`;
+const suck = (direction = Direction.Forward) => {
+  if (direction === Direction.Back) {
+    throw new Error('Turtles cannot suck back');
+  } else if (direction === Direction.Forward) {
+    return 'turtle.suck()\n';
+  }
+
+  return `turtle.suck${direction}()\n`;
+};
 
 const luaIf = (args: { cmp: string; yes: string; no?: string }) => {
   let ret = `if ${args.cmp} then
